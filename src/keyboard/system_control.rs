@@ -1,8 +1,10 @@
 use atmega_usbd::UsbBus;
 use avr_device::atmega32u4::USB_DEVICE;
-use usb_device::{Result, class_prelude::UsbBusAllocator};
-use usbd_hid::descriptor::{SystemControlReport, SerializedDescriptor};
-use usbd_hid::hid_class::{HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig};
+use usb_device::{class_prelude::UsbBusAllocator, Result};
+use usbd_hid::descriptor::{SerializedDescriptor, SystemControlReport};
+use usbd_hid::hid_class::{
+    HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
+};
 
 use super::*;
 

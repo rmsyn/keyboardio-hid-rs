@@ -3,8 +3,8 @@ use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage, MediaKey, SystemContro
 use usbd_hid::hid_class::HidCountryCode;
 
 pub mod boot;
-pub mod nkro;
 pub mod media;
+pub mod nkro;
 pub mod system_control;
 
 pub(crate) const ZERO_KEYS: [u8; 6] = [0u8; 6];
@@ -45,7 +45,7 @@ pub(crate) const fn key_to_printable_bitfield(key: u8) -> u8 {
 }
 
 pub(crate) const fn key_to_modifier_bitfield(key: u8) -> u8 {
-   1 << (key - KeyboardUsage::KeyboardLeftControl as u8)
+    1 << (key - KeyboardUsage::KeyboardLeftControl as u8)
 }
 
 // FIXME: allow setting locale at runtime by setting config value in device memory.
@@ -201,7 +201,12 @@ pub trait KeyboardOps {
     /// Gets whether the keycodes have changed between the last and current keyboard report.
     fn keycodes_changed(&self) -> bool {
         let mut changed = 0;
-        for (last, current) in self.last_report().keycodes.iter().zip(self.report().keycodes.iter()) {
+        for (last, current) in self
+            .last_report()
+            .keycodes
+            .iter()
+            .zip(self.report().keycodes.iter())
+        {
             changed |= last ^ current;
         }
         changed != 0
@@ -241,5 +246,4 @@ pub trait KeyboardOps {
     fn leds(&self) -> u8 {
         self.report().leds
     }
-
 }

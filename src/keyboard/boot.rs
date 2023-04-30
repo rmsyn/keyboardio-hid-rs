@@ -1,11 +1,13 @@
 use atmega_usbd::UsbBus;
 use avr_device::atmega32u4::USB_DEVICE;
-use usb_device::{Result, class_prelude::UsbBusAllocator};
+use usb_device::{class_prelude::UsbBusAllocator, Result};
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
-use usbd_hid::hid_class::{HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig};
+use usbd_hid::hid_class::{
+    HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
+};
 
-use crate::hid_settings::{HIDReportId, HIDReport};
 use crate::hid_report_observer::HIDReportObserver;
+use crate::hid_settings::{HIDReport, HIDReportId};
 
 use super::*;
 
@@ -125,7 +127,8 @@ impl KeyboardOps for Keyboard {
             let report = self.report();
             // replace the Ok(usize) with Ok(())
             let ret = hid_class.push_input(report).map(|_| ());
-            self.observer.observe_report(HIDReportId::Keyboard, HIDReport::Keyboard(*report), &ret);
+            self.observer
+                .observe_report(HIDReportId::Keyboard, HIDReport::Keyboard(*report), &ret);
             self.last_report = self.report;
 
             ret
