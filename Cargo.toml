@@ -1,0 +1,75 @@
+[package]
+name = "keyboardio-hid"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+usb-device = "0.2"
+
+[dependencies.avr-device]
+version = "0.5"
+features = ["atmega32u4"]
+
+[dependencies.arduino-hal]
+git = "https://github.com/Rahix/avr-hal"
+package = "arduino-hal"
+features = ["arduino-leonardo"]
+
+[dependencies.atmega-usbd]
+git = "https://github.com/rmsyn/atmega-usbd"
+branch = "feature/pll"
+
+[dependencies.usbd-hid]
+version = "0.6"
+git = "https://github.com/rmsyn/usbd-hid"
+branch = "main"
+features = ["defmt"]
+
+[dependencies.utils]
+path = "keyboardio-utils"
+package = "keyboardio-utils"
+
+[profile.dev]
+opt-level = "s"
+lto = true
+
+[features]
+default = ["balanced"]
+best-effort = []
+balanced = []
+high-performance = []
+arabic = []
+belgian = []
+canadian-bilingual = []
+canadian-french = []
+czech = []
+danish = []
+finnish = []
+french = []
+german = []
+greek = []
+hebrew = []
+hungary = []
+international = []
+italian = []
+japanese = []
+korean = []
+latin-america = []
+netherlands = []
+norwegian = []
+farsi = []
+poland = []
+portuguese = []
+russia = []
+slovakia = []
+spanish = []
+swedish = []
+swiss-french = []
+swiss-german = []
+switzerland = []
+taiwan = []
+turkish-q = []
+uk = []
+us = []
+yugoslavia = []
+turkish-f = []
