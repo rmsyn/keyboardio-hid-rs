@@ -34,7 +34,7 @@ impl Keyboard {
 
     fn send_report_unchecked(&self) -> Result<usize> {
         let hid_class = HIDClass::new_ep_in_with_settings(
-            &self.usb_bus,
+            self.bus(),
             KeyboardReport::desc(),
             POLL_MS,
             hid_class_settings(),
@@ -46,6 +46,8 @@ impl Keyboard {
 }
 
 impl KeyboardOps for Keyboard {
+    type UsbBus = UsbBusAllocator<UsbBus<()>>;
+
     fn report(&self) -> &KeyboardReport {
         &self.report
     }
@@ -60,6 +62,10 @@ impl KeyboardOps for Keyboard {
 
     fn last_report_mut(&mut self) -> &mut KeyboardReport {
         &mut self.last_report
+    }
+
+    fn bus(&self) -> &Self::UsbBus {
+        &self.usb_bus
     }
 
     fn end(&mut self) -> Result<()> {

@@ -1,9 +1,11 @@
 use usb_device::Result;
-use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage};
+use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage, MediaKey, SystemControlKey};
 use usbd_hid::hid_class::HidCountryCode;
 
 pub mod boot;
 pub mod nkro;
+pub mod media;
+pub mod system_control;
 
 pub(crate) const ZERO_KEYS: [u8; 6] = [0u8; 6];
 // Polling interval for the host to check USB device reports.
@@ -24,6 +26,14 @@ pub(crate) const fn is_printable(key: u8) -> bool {
 
 pub(crate) const fn is_modifier(key: u8) -> bool {
     key >= KeyboardUsage::KeyboardLeftControl as u8 && key <= KeyboardUsage::KeyboardRightGUI as u8
+}
+
+pub(crate) fn is_media(key: u8) -> bool {
+    MediaKey::from(key) != MediaKey::Reserved
+}
+
+pub(crate) fn is_system_control(key: u8) -> bool {
+    SystemControlKey::from(key) != SystemControlKey::Reserved
 }
 
 pub(crate) const fn key_to_index(key: u8) -> usize {
@@ -116,6 +126,8 @@ pub(crate) const fn keyboard_locale() -> HidCountryCode {
 }
 
 pub trait KeyboardOps {
+    type UsbBus;
+
     /// Gets a reference to the current keyboard report.
     fn report(&self) -> &KeyboardReport;
 
@@ -128,11 +140,17 @@ pub trait KeyboardOps {
     /// Gets a mutable reference to the last keyboard report.
     fn last_report_mut(&mut self) -> &mut KeyboardReport;
 
+    /// Gets a reference to the USB bus allocator.
+    fn bus(&self) -> &Self::UsbBus;
+
     /// Begin the keyboard reports (no-op by default).
     fn begin(&self) {}
 
     /// End the keyboard reports.
     fn end(&mut self) -> Result<()>;
+
+    /// Perform USB device setup.
+    fn setup(&mut self) {}
 
     /// Press a key, and add it to the current report.
     ///
