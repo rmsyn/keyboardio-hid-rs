@@ -1,4 +1,5 @@
-use usb_device::Result;
+use atmega_usbd::UsbBus;
+use usb_device::{Result, bus::UsbBusAllocator};
 use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage, MediaKey, SystemControlKey};
 use usbd_hid::hid_class::HidCountryCode;
 
@@ -7,7 +8,12 @@ pub mod media;
 pub mod nkro;
 pub mod system_control;
 
-pub(crate) const ZERO_KEYS: [u8; 6] = [0u8; 6];
+pub type Keycodes = [u8; 6];
+
+pub type KeyboardUsbBus = UsbBus<()>;
+pub type KeyboardUsbBusAllocator = UsbBusAllocator<KeyboardUsbBus>;
+
+pub(crate) const ZERO_KEYS: Keycodes = [0u8; 6];
 // Polling interval for the host to check USB device reports.
 // Higher interval results in better power usage, but slower response time.
 // Lower interval results in faster response times, and more power consumption.
@@ -126,10 +132,11 @@ pub(crate) const fn keyboard_locale() -> HidCountryCode {
 }
 
 pub trait KeyboardOps {
-    type UsbBus;
-
     /// Gets a reference to the current keyboard report.
     fn report(&self) -> &KeyboardReport;
+
+    /// Sets the current keyboard report.
+    fn set_report(&mut self, report: KeyboardReport);
 
     /// Gets a mutable reference to the current keyboard report.
     fn report_mut(&mut self) -> &mut KeyboardReport;
@@ -141,7 +148,7 @@ pub trait KeyboardOps {
     fn last_report_mut(&mut self) -> &mut KeyboardReport;
 
     /// Gets a reference to the USB bus allocator.
-    fn bus(&self) -> &Self::UsbBus;
+    fn bus(&self) -> &KeyboardUsbBusAllocator;
 
     /// Begin the keyboard reports (no-op by default).
     fn begin(&self) {}
@@ -246,4 +253,7 @@ pub trait KeyboardOps {
     fn leds(&self) -> u8 {
         self.report().leds
     }
+
+    /// Consumes the [KeyboardOps] implementation object, and returns the underlying USB bus.
+    fn to_usb_bus(self) -> KeyboardUsbBusAllocator;
 }

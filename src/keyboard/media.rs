@@ -1,6 +1,6 @@
 use atmega_usbd::UsbBus;
 use avr_device::atmega32u4::USB_DEVICE;
-use usb_device::{class_prelude::UsbBusAllocator, Result};
+use usb_device::Result;
 use usbd_hid::descriptor::{MediaKeyboardReport, SerializedDescriptor};
 use usbd_hid::hid_class::{
     HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
@@ -18,7 +18,7 @@ const fn hid_class_settings() -> HidClassSettings {
 }
 
 pub struct Keyboard {
-    usb_bus: UsbBusAllocator<UsbBus<()>>,
+    usb_bus: KeyboardUsbBusAllocator,
     report: KeyboardReport,
     last_report: KeyboardReport,
 }
@@ -35,11 +35,27 @@ impl Keyboard {
     }
 }
 
-impl KeyboardOps for Keyboard {
-    type UsbBus = UsbBusAllocator<UsbBus<()>>;
+impl From<KeyboardUsbBusAllocator> for Keyboard {
+    /// Creates a [Keyboard] device from a UsbBusAllocator.
+    ///
+    /// Useful for converting from other keyboard types. Ensures unique ownership over the
+    /// underlying UsbBus.
+    fn from(usb_bus: KeyboardUsbBusAllocator) -> Self {
+        Self {
+            usb_bus,
+            report: KeyboardReport::default(),
+            last_report: KeyboardReport::default(),
+        }
+    }
+}
 
+impl KeyboardOps for Keyboard {
     fn report(&self) -> &KeyboardReport {
         &self.report
+    }
+
+    fn set_report(&mut self, report: KeyboardReport) {
+        self.report = report;
     }
 
     fn report_mut(&mut self) -> &mut KeyboardReport {
@@ -54,7 +70,7 @@ impl KeyboardOps for Keyboard {
         &mut self.last_report
     }
 
-    fn bus(&self) -> &Self::UsbBus {
+    fn bus(&self) -> &KeyboardUsbBusAllocator {
         &self.usb_bus
     }
 
@@ -146,5 +162,9 @@ impl KeyboardOps for Keyboard {
         }
 
         found && is_media(key)
+    }
+
+    fn to_usb_bus(self) -> KeyboardUsbBusAllocator {
+        self.usb_bus
     }
 }
