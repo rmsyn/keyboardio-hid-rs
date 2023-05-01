@@ -1,11 +1,19 @@
-use usb_device::Result;
-use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage};
+use atmega_usbd::UsbBus;
+use usb_device::{Result, bus::UsbBusAllocator};
+use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage, MediaKey, SystemControlKey};
 use usbd_hid::hid_class::HidCountryCode;
 
 pub mod boot;
+pub mod media;
 pub mod nkro;
+pub mod system_control;
 
-pub(crate) const ZERO_KEYS: [u8; 6] = [0u8; 6];
+pub type Keycodes = [u8; 6];
+
+pub type KeyboardUsbBus = UsbBus<()>;
+pub type KeyboardUsbBusAllocator = UsbBusAllocator<KeyboardUsbBus>;
+
+pub(crate) const ZERO_KEYS: Keycodes = [0u8; 6];
 // Polling interval for the host to check USB device reports.
 // Higher interval results in better power usage, but slower response time.
 // Lower interval results in faster response times, and more power consumption.
@@ -26,6 +34,14 @@ pub(crate) const fn is_modifier(key: u8) -> bool {
     key >= KeyboardUsage::KeyboardLeftControl as u8 && key <= KeyboardUsage::KeyboardRightGUI as u8
 }
 
+pub(crate) fn is_media(key: u8) -> bool {
+    MediaKey::from(key) != MediaKey::Reserved
+}
+
+pub(crate) fn is_system_control(key: u8) -> bool {
+    SystemControlKey::from(key) != SystemControlKey::Reserved
+}
+
 pub(crate) const fn key_to_index(key: u8) -> usize {
     (key / 8) as usize
 }
@@ -35,7 +51,7 @@ pub(crate) const fn key_to_printable_bitfield(key: u8) -> u8 {
 }
 
 pub(crate) const fn key_to_modifier_bitfield(key: u8) -> u8 {
-   1 << (key - KeyboardUsage::KeyboardLeftControl as u8)
+    1 << (key - KeyboardUsage::KeyboardLeftControl as u8)
 }
 
 // FIXME: allow setting locale at runtime by setting config value in device memory.
@@ -119,6 +135,9 @@ pub trait KeyboardOps {
     /// Gets a reference to the current keyboard report.
     fn report(&self) -> &KeyboardReport;
 
+    /// Sets the current keyboard report.
+    fn set_report(&mut self, report: KeyboardReport);
+
     /// Gets a mutable reference to the current keyboard report.
     fn report_mut(&mut self) -> &mut KeyboardReport;
 
@@ -128,11 +147,17 @@ pub trait KeyboardOps {
     /// Gets a mutable reference to the last keyboard report.
     fn last_report_mut(&mut self) -> &mut KeyboardReport;
 
+    /// Gets a reference to the USB bus allocator.
+    fn bus(&self) -> &KeyboardUsbBusAllocator;
+
     /// Begin the keyboard reports (no-op by default).
     fn begin(&self) {}
 
     /// End the keyboard reports.
     fn end(&mut self) -> Result<()>;
+
+    /// Perform USB device setup.
+    fn setup(&mut self) {}
 
     /// Press a key, and add it to the current report.
     ///
@@ -183,7 +208,12 @@ pub trait KeyboardOps {
     /// Gets whether the keycodes have changed between the last and current keyboard report.
     fn keycodes_changed(&self) -> bool {
         let mut changed = 0;
-        for (last, current) in self.last_report().keycodes.iter().zip(self.report().keycodes.iter()) {
+        for (last, current) in self
+            .last_report()
+            .keycodes
+            .iter()
+            .zip(self.report().keycodes.iter())
+        {
             changed |= last ^ current;
         }
         changed != 0
@@ -224,4 +254,6 @@ pub trait KeyboardOps {
         self.report().leds
     }
 
+    /// Consumes the [KeyboardOps] implementation object, and returns the underlying USB bus.
+    fn to_usb_bus(self) -> KeyboardUsbBusAllocator;
 }

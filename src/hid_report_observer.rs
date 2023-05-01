@@ -1,6 +1,6 @@
 use usb_device::Result;
 
-use crate::hid_settings::{HIDReportId, HIDReport};
+use crate::hid_settings::{HIDReport, HIDReportId};
 
 /// Callback function for sending HID reports.
 pub type SendReportHook = fn(id: HIDReportId, report: HIDReport, result: &Result<()>);
@@ -11,16 +11,21 @@ pub struct HIDReportObserver {
 
 impl HIDReportObserver {
     #[allow(non_upper_case_globals)]
-    const NopSendReportHook: SendReportHook = |_id: HIDReportId, _report: HIDReport, _result: &Result<()>| {};
+    const NopSendReportHook: SendReportHook =
+        |_id: HIDReportId, _report: HIDReport, _result: &Result<()>| {};
 
     /// Creates a new [HIDReportObserver].
     pub const fn new(send_report_hook: SendReportHook) -> Self {
-        Self { send_report_hook: Some(send_report_hook) }
+        Self {
+            send_report_hook: Some(send_report_hook),
+        }
     }
 
     /// Creates a default [HIDReportObserver] with no-op [SendReportHook].
     pub const fn default() -> Self {
-        Self { send_report_hook: Some(Self::NopSendReportHook) }
+        Self {
+            send_report_hook: Some(Self::NopSendReportHook),
+        }
     }
 
     /// Attempts to send an HID report by calling the currently set [SendReportHook].

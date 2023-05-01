@@ -1,8 +1,10 @@
 use atmega_usbd::UsbBus;
 use avr_device::atmega32u4::USB_DEVICE;
-use usb_device::{class_prelude::UsbBusAllocator, Result};
+use usb_device::Result;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
-use usbd_hid::hid_class::{HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig};
+use usbd_hid::hid_class::{
+    HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
+};
 
 use super::*;
 
@@ -16,7 +18,7 @@ const fn hid_class_settings() -> HidClassSettings {
 }
 
 pub struct Keyboard {
-    usb_bus: UsbBusAllocator<UsbBus<()>>,
+    usb_bus: KeyboardUsbBusAllocator,
     report: KeyboardReport,
     last_report: KeyboardReport,
 }
@@ -34,7 +36,7 @@ impl Keyboard {
 
     fn send_report_unchecked(&self) -> Result<usize> {
         let hid_class = HIDClass::new_ep_in_with_settings(
-            &self.usb_bus,
+            self.bus(),
             KeyboardReport::desc(),
             POLL_MS,
             hid_class_settings(),
@@ -42,12 +44,29 @@ impl Keyboard {
 
         hid_class.push_input(&self.last_report)
     }
+}
 
+impl From<KeyboardUsbBusAllocator> for Keyboard {
+    /// Creates a [Keyboard] device from a UsbBusAllocator.
+    ///
+    /// Useful for converting from other keyboard types. Ensures unique ownership over the
+    /// underlying UsbBus.
+    fn from(usb_bus: KeyboardUsbBusAllocator) -> Self {
+        Self {
+            usb_bus,
+            report: KeyboardReport::default(),
+            last_report: KeyboardReport::default(),
+        }
+    }
 }
 
 impl KeyboardOps for Keyboard {
     fn report(&self) -> &KeyboardReport {
         &self.report
+    }
+
+    fn set_report(&mut self, report: KeyboardReport) {
+        self.report = report;
     }
 
     fn report_mut(&mut self) -> &mut KeyboardReport {
@@ -60,6 +79,10 @@ impl KeyboardOps for Keyboard {
 
     fn last_report_mut(&mut self) -> &mut KeyboardReport {
         &mut self.last_report
+    }
+
+    fn bus(&self) -> &KeyboardUsbBusAllocator {
+        &self.usb_bus
     }
 
     fn end(&mut self) -> Result<()> {
@@ -109,7 +132,12 @@ impl KeyboardOps for Keyboard {
             // report, and send it to the host.
             let mut non_modifiers_toggled_off = false;
 
-            for (last_key, key) in self.last_report.keycodes.iter_mut().zip(self.report.keycodes.iter()) {
+            for (last_key, key) in self
+                .last_report
+                .keycodes
+                .iter_mut()
+                .zip(self.report.keycodes.iter())
+            {
                 let released_keycodes = *last_key & !key;
                 if released_keycodes != 0 {
                     *last_key &= !released_keycodes;
@@ -126,7 +154,9 @@ impl KeyboardOps for Keyboard {
         }
 
         if self.keycodes_changed() {
-            self.last_report.keycodes.copy_from_slice(self.report.keycodes.as_ref());
+            self.last_report
+                .keycodes
+                .copy_from_slice(self.report.keycodes.as_ref());
             self.send_report_unchecked()?;
         }
 
@@ -134,10 +164,16 @@ impl KeyboardOps for Keyboard {
     }
 
     fn is_key_pressed(&self, key: u8) -> bool {
-        is_printable(key) && self.report.keycodes[key_to_index(key)] & key_to_printable_bitfield(key) != 0
+        is_printable(key)
+            && self.report.keycodes[key_to_index(key)] & key_to_printable_bitfield(key) != 0
     }
 
     fn was_key_pressed(&self, key: u8) -> bool {
-        is_printable(key) && self.last_report.keycodes[key_to_index(key)] & key_to_printable_bitfield(key) != 0
+        is_printable(key)
+            && self.last_report.keycodes[key_to_index(key)] & key_to_printable_bitfield(key) != 0
+    }
+
+    fn to_usb_bus(self) -> KeyboardUsbBusAllocator {
+        self.usb_bus
     }
 }
