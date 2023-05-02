@@ -21,9 +21,8 @@ branch = "feature/pll"
 
 [dependencies.usbd-hid]
 version = "0.6"
-git = "https://github.com/rmsyn/usbd-hid"
-branch = "main"
-features = ["defmt"]
+git = "https://github.com/twitchyliquid64/usbd-hid"
+branch = "master"
 
 [dependencies.utils]
 path = "keyboardio-utils"
