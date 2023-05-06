@@ -17,7 +17,7 @@ features = ["arduino-leonardo"]
 
 [dependencies.atmega-usbd]
 git = "https://github.com/rmsyn/atmega-usbd"
-branch = "feature/pll"
+branch = "main"
 
 [dependencies.usbd-hid]
 version = "0.6"
