@@ -26,19 +26,19 @@ pub(crate) static POLL_MS: u8 = 128;
 #[cfg(feature = "best-effort")]
 pub(crate) static POLL_MS: u8 = 255;
 
-pub(crate) const fn is_printable(key: u8) -> bool {
+pub const fn is_printable(key: u8) -> bool {
     key <= KeyboardUsage::KeypadHexadecimal as u8
 }
 
-pub(crate) const fn is_modifier(key: u8) -> bool {
+pub const fn is_modifier(key: u8) -> bool {
     key >= KeyboardUsage::KeyboardLeftControl as u8 && key <= KeyboardUsage::KeyboardRightGUI as u8
 }
 
-pub(crate) fn is_media(key: u8) -> bool {
+pub fn is_media(key: u8) -> bool {
     MediaKey::from(key) != MediaKey::Reserved
 }
 
-pub(crate) fn is_system_control(key: u8) -> bool {
+pub fn is_system_control(key: u8) -> bool {
     SystemControlKey::from(key) != SystemControlKey::Reserved
 }
 
