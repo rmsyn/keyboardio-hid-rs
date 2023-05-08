@@ -1,7 +1,10 @@
+use arduino_hal::pac::USB_DEVICE;
 use atmega_usbd::UsbBus;
-use usb_device::{Result, bus::UsbBusAllocator};
+use usb_device::bus::UsbBusAllocator;
 use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage, MediaKey, SystemControlKey};
-use usbd_hid::hid_class::HidCountryCode;
+use usbd_hid::hid_class::{HidCountryCode, HidProtocol};
+
+use crate::HIDReportObserver;
 
 pub mod boot;
 pub mod media;
@@ -131,82 +134,119 @@ pub(crate) const fn keyboard_locale() -> HidCountryCode {
     }
 }
 
-pub trait KeyboardOps {
+pub struct Keyboard {
+    usb_bus: KeyboardUsbBusAllocator,
+    report: KeyboardReport,
+    last_report: KeyboardReport,
+    observer: HIDReportObserver,
+    default_protocol: HidProtocol,
+    protocol: HidProtocol,
+    idle: u8,
+}
+
+impl Keyboard {
+    /// Creates a new [Keyboard] device, taking ownership of the `USB_DEVICE` register of the
+    /// ATmega32u4
+    pub fn new(usb: USB_DEVICE) -> Self {
+        Self {
+            usb_bus: UsbBus::new(usb),
+            report: KeyboardReport::default(),
+            last_report: KeyboardReport::default(),
+            observer: HIDReportObserver::default(),
+            default_protocol: HidProtocol::Keyboard,
+            protocol: HidProtocol::Keyboard,
+            idle: 0,
+        }
+    }
+
+    /// Creates a new [Keyboard] device, taking ownership of the `USB_DEVICE` register of the
+    /// ATmega32u4.
+    ///
+    /// Allows setting a custom [HIDReportObserver] implementation for firing a callback function
+    /// on HID report events.
+    pub fn new_with_observer(usb: USB_DEVICE, observer: HIDReportObserver) -> Self {
+        Self {
+            usb_bus: UsbBus::new(usb),
+            report: KeyboardReport::default(),
+            last_report: KeyboardReport::default(),
+            observer,
+            default_protocol: HidProtocol::Keyboard,
+            protocol: HidProtocol::Keyboard,
+            idle: 0,
+        }
+    }
+
     /// Gets a reference to the current keyboard report.
-    fn report(&self) -> &KeyboardReport;
+    pub fn report(&self) -> &KeyboardReport {
+        &self.report
+    }
 
     /// Sets the current keyboard report.
-    fn set_report(&mut self, report: KeyboardReport);
+    pub fn set_report(&mut self, report: KeyboardReport) {
+        self.report = report;
+    }
 
     /// Gets a mutable reference to the current keyboard report.
-    fn report_mut(&mut self) -> &mut KeyboardReport;
+    pub fn report_mut(&mut self) -> &mut KeyboardReport {
+        &mut self.report
+    }
 
     /// Gets a reference to the last keyboard report.
-    fn last_report(&self) -> &KeyboardReport;
+    pub fn last_report(&self) -> &KeyboardReport {
+        &self.report
+    }
 
     /// Gets a mutable reference to the last keyboard report.
-    fn last_report_mut(&mut self) -> &mut KeyboardReport;
+    pub fn last_report_mut(&mut self) -> &mut KeyboardReport {
+        &mut self.last_report
+    }
 
     /// Gets a reference to the USB bus allocator.
-    fn bus(&self) -> &KeyboardUsbBusAllocator;
+    pub fn bus(&self) -> &KeyboardUsbBusAllocator {
+        &self.usb_bus
+    }
+
+    /// Gets the currently set protocol for the boot keyboard.
+    pub fn protocol(&self) -> HidProtocol {
+        self.protocol
+    }
+
+    /// Sets the protocol for the boot keyboard.
+    pub fn set_protocol(&mut self, protocol: HidProtocol) {
+        self.protocol = protocol;
+    }
+
+    /// Gets the default protocol for the boot keyboard.
+    pub fn default_protocol(&self) -> HidProtocol {
+        self.protocol
+    }
+
+    /// Switch back to default protocol after a USB reset event.
+    pub fn on_usb_reset(&mut self) {
+        self.protocol = self.default_protocol;
+    }
+
+    /// Gets the idle state of the boot keyboard.
+    pub fn idle(&self) -> u8 {
+        self.idle
+    }
 
     /// Begin the keyboard reports (no-op by default).
-    fn begin(&self) {}
-
-    /// End the keyboard reports.
-    fn end(&mut self) -> Result<()>;
+    pub fn begin(&self) {}
 
     /// Perform USB device setup.
-    fn setup(&mut self) {}
-
-    /// Press a key, and add it to the current report.
-    ///
-    /// Returns 1 if the key is in the printable keycodes, or is a modifier key.
-    /// Returns 0 otherwise.
-    fn press(&mut self, key: u8) -> usize;
-
-    /// Release a pressed key if the keycode is present in the current report.
-    ///
-    /// Returns 1 if the key is in the printable keycodes, or is a modifier key.
-    /// Returns 0 otherwise.
-    fn release(&mut self, key: u8) -> usize;
+    pub fn setup(&mut self) {}
 
     /// Release all keycodes registered in the current keyboard report.
-    fn release_all(&mut self) {
+    pub fn release_all(&mut self) {
         let report = self.report_mut();
 
         report.modifier = 0;
         report.keycodes.copy_from_slice(ZERO_KEYS.as_ref());
     }
 
-    /// Sending the current HID report to the host:
-    ///
-    /// Depending on the differences between the current and previous HID reports, we
-    /// might need to send one or two extra reports to guarantee that the host will
-    /// process the changes in the correct order. There are two important scenarios
-    /// to consider:
-    ///
-    /// 1. If a non-modifier keycode toggles off in the same report as a modifier
-    /// changes, the host might process the modifier change first. For example, if
-    /// both `shift` and `4` toggle off in the same report (most likely from a
-    /// `LSHIFT(Key_4)` key being released), and that key has been held long enough
-    /// to trigger character repeat, we could end up with a plain `4` in the output
-    /// at the end of the repeat: `$$$$4` instead of `$$$$$`.
-    ///
-    /// 2. If a non-modifier keycode toggles on in the same report as a modifier
-    /// changes, the host might process the non-modifer first. For example, pressing
-    /// and holding an `LSHIFT(Key_4)` key might result in `4$$$` rather than `$$$$`.
-    ///
-    /// Therefore, each call to `sendReport()` must send (up to) three reports to the
-    /// host to guarantee the correct order of processing:
-    ///
-    /// 1. A report with toggled-off non-modifiers removed.
-    /// 2. A report with changes to modifiers.
-    /// 3. A report with toggled-on non-modifiers added.
-    fn send_report(&mut self) -> Result<()>;
-
     /// Gets whether the keycodes have changed between the last and current keyboard report.
-    fn keycodes_changed(&self) -> bool {
+    pub fn keycodes_changed(&self) -> bool {
         let mut changed = 0;
         for (last, current) in self
             .last_report()
@@ -219,41 +259,55 @@ pub trait KeyboardOps {
         changed != 0
     }
 
-    /// Gets whether the provided key is pressed in the current keyboard report.
-    fn is_key_pressed(&self, key: u8) -> bool;
-
-    /// Gets whether the provided key was pressed in the previous keyboard report.
-    fn was_key_pressed(&self, key: u8) -> bool;
-
     /// Returns true if the modifer key passed in will be sent during this key report
     /// Returns false in all other cases
-    fn is_modifier_active(&self, key: u8) -> bool {
-        is_modifier(key) && self.report().modifier & key_to_modifier_bitfield(key) != 0
+    pub fn is_modifier_active(&self, key: u8) -> bool {
+        is_modifier(key) && self.report.modifier & key_to_modifier_bitfield(key) != 0
     }
 
     /// Returns true if the modifer key passed in was being sent during the previous key report
     /// Returns false in all other cases
-    fn was_modifier_active(&self, key: u8) -> bool {
-        is_modifier(key) && self.last_report().modifier & key_to_modifier_bitfield(key) != 0
+    pub fn was_modifier_active(&self, key: u8) -> bool {
+        is_modifier(key) && self.last_report.modifier & key_to_modifier_bitfield(key) != 0
     }
 
     /// Returns true if *any* modifier will be sent during this key report
     /// Returns false in all other cases
-    fn is_any_modifier_active(&self) -> bool {
-        self.report().modifier > 0
+    pub fn is_any_modifier_active(&self) -> bool {
+        self.report.modifier > 0
     }
 
     /// Returns true if *any* modifier was being sent during the previous key report
     /// Returns false in all other cases
-    fn was_any_modifier_active(&self) -> bool {
-        self.last_report().modifier > 0
+    pub fn was_any_modifier_active(&self) -> bool {
+        self.last_report.modifier > 0
     }
 
     /// Gets the number of LEDs in the current keyboard report.
-    fn leds(&self) -> u8 {
-        self.report().leds
+    pub fn leds(&self) -> u8 {
+        self.report.leds
     }
 
     /// Consumes the [KeyboardOps] implementation object, and returns the underlying USB bus.
-    fn to_usb_bus(self) -> KeyboardUsbBusAllocator;
+    pub fn to_usb_bus(self) -> KeyboardUsbBusAllocator {
+        self.usb_bus
+    }
+}
+
+impl From<KeyboardUsbBusAllocator> for Keyboard {
+    /// Creates a [Keyboard] device from a UsbBusAllocator.
+    ///
+    /// Useful for converting from other keyboard types. Ensures unique ownership over the
+    /// underlying UsbBus.
+    fn from(usb_bus: KeyboardUsbBusAllocator) -> Self {
+        Self {
+            usb_bus,
+            report: KeyboardReport::default(),
+            last_report: KeyboardReport::default(),
+            observer: HIDReportObserver::default(),
+            default_protocol: HidProtocol::Keyboard,
+            protocol: HidProtocol::Keyboard,
+            idle: 0,
+        }
+    }
 }
