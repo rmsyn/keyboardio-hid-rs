@@ -47,6 +47,8 @@ pub trait BootKeyboard {
     /// 3. A report with toggled-on non-modifiers added.
     fn send_report(&mut self) -> Result<()>;
 
+    fn hid_class(&'_ self) -> HIDClass<'_, KeyboardUsbBus>;
+
     /// Press a key, and add it to the current report.
     ///
     /// Returns 1 if the key is in the printable keycodes, or is a modifier key.
@@ -74,16 +76,9 @@ impl BootKeyboard for Keyboard {
 
     fn send_report(&mut self) -> Result<()> {
         if self.keycodes_changed() {
-            let hid_class = HIDClass::new_ep_in_with_settings(
-                self.bus(),
-                KeyboardReport::desc(),
-                POLL_MS,
-                boot_hid_class_settings(self.protocol),
-            );
-
             let report = self.report();
             // replace the Ok(usize) with Ok(())
-            let ret = hid_class.push_input(report).map(|_| ());
+            let ret = self.hid_class().push_input(report).map(|_| ());
             self.observer
                 .observe_report(HIDReportId::Keyboard, HIDReport::Keyboard(*report), &ret);
             self.last_report = self.report;
@@ -92,6 +87,15 @@ impl BootKeyboard for Keyboard {
         } else {
             Ok(())
         }
+    }
+
+    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus> {
+        HIDClass::new_with_settings(
+            self.bus(),
+            KeyboardReport::desc(),
+            POLL_MS,
+            boot_hid_class_settings(self.protocol),
+        )
     }
 
     fn press(&mut self, key: u8) -> usize {

@@ -60,6 +60,8 @@ pub trait NKROKeyboard {
     /// Sends a keyboard report without check report validity.
     fn send_report_unchecked(&self) -> Result<usize>;
 
+    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus>;
+
     /// Gets whether the provided key is pressed in the current keyboard report.
     fn is_key_pressed(&self, key: u8) -> bool;
 
@@ -147,16 +149,17 @@ impl NKROKeyboard for Keyboard {
     }
 
     fn send_report_unchecked(&self) -> Result<usize> {
-        let hid_class = HIDClass::new_ep_in_with_settings(
+        self.hid_class().push_input(&self.last_report)
+    }
+
+    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus> {
+        HIDClass::new_with_settings(
             self.bus(),
             KeyboardReport::desc(),
             POLL_MS,
             nkro_hid_class_settings(),
-        );
-
-        hid_class.push_input(&self.last_report)
+        )
     }
-
 
     fn is_key_pressed(&self, key: u8) -> bool {
         is_printable(key)

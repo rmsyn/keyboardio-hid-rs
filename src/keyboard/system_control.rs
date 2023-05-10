@@ -45,6 +45,8 @@ pub trait SystemControlKeyboard {
     /// 3. A report with toggled-on non-modifiers added.
     fn send_report(&mut self) -> Result<()>;
 
+    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus>;
+
     /// Press a key, and add it to the current report.
     ///
     /// Returns 1 if the key is in the printable keycodes, or is a modifier key.
@@ -72,22 +74,24 @@ impl SystemControlKeyboard for Keyboard {
 
     fn send_report(&mut self) -> Result<()> {
         if self.keycodes_changed() {
-            let hid_class = HIDClass::new_ep_in_with_settings(
-                self.bus(),
-                SystemControlReport::desc(),
-                POLL_MS,
-                system_control_hid_class_settings(),
-            );
-
             let report = self.report();
             // replace the Ok(usize) with Ok(())
-            let ret = hid_class.push_input(report).map(|_| ());
+            let ret = self.hid_class().push_input(report).map(|_| ());
             self.last_report = self.report;
 
             ret
         } else {
             Ok(())
         }
+    }
+
+    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus> {
+        HIDClass::new_with_settings(
+            self.bus(),
+            SystemControlReport::desc(),
+            POLL_MS,
+            system_control_hid_class_settings(),
+        )
     }
 
     fn press(&mut self, key: u8) -> usize {
