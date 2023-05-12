@@ -1,8 +1,7 @@
-use arduino_hal::pac::USB_DEVICE;
 use atmega_usbd::UsbBus;
 use usb_device::bus::UsbBusAllocator;
-use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage, MediaKey, SystemControlKey};
-use usbd_hid::hid_class::{HidCountryCode, HidProtocol};
+use usbd_hid::descriptor::{KeyboardReport, KeyboardUsage, MediaKey, SerializedDescriptor, SystemControlKey, MediaKeyboardReport, SystemControlReport};
+use usbd_hid::hid_class::{HIDClass, HidCountryCode, HidProtocol};
 
 use crate::HIDReportObserver;
 
@@ -134,8 +133,8 @@ pub(crate) const fn keyboard_locale() -> HidCountryCode {
     }
 }
 
-pub struct Keyboard {
-    usb_bus: KeyboardUsbBusAllocator,
+pub struct Keyboard<'k> {
+    hid_class: HIDClass<'k, KeyboardUsbBus>,
     report: KeyboardReport,
     last_report: KeyboardReport,
     observer: HIDReportObserver,
@@ -144,12 +143,59 @@ pub struct Keyboard {
     idle: u8,
 }
 
-impl Keyboard {
-    /// Creates a new [Keyboard] device, taking ownership of the `USB_DEVICE` register of the
-    /// ATmega32u4
-    pub fn new(usb: USB_DEVICE) -> Self {
+impl<'k> Keyboard<'k> {
+    /// Creates a new Boot [Keyboard] device.
+    pub fn new_boot(bus: &'k KeyboardUsbBusAllocator) -> Self {
+        let hid_class = HIDClass::new_with_settings(
+            bus,
+            KeyboardReport::desc(),
+            POLL_MS,
+            boot::boot_hid_class_settings(HidProtocol::Keyboard),
+        );
+
+        Self::new_with_hid_class(hid_class)
+    }
+
+    /// Creates a new NKRO [Keyboard] device.
+    pub fn new_nkro(bus: &'k KeyboardUsbBusAllocator) -> Self {
+        let hid_class = HIDClass::new_with_settings(
+            bus,
+            KeyboardReport::desc(),
+            POLL_MS,
+            nkro::nkro_hid_class_settings(),
+        );
+
+        Self::new_with_hid_class(hid_class)
+    }
+
+    /// Creates a new Media [Keyboard] device.
+    pub fn new_media(bus: &'k KeyboardUsbBusAllocator) -> Self {
+        let hid_class = HIDClass::new_with_settings(
+            bus,
+            MediaKeyboardReport::desc(),
+            POLL_MS,
+            media::media_hid_class_settings(),
+        );
+
+        Self::new_with_hid_class(hid_class)
+    }
+
+    /// Creates a new System Control [Keyboard] device.
+    pub fn new_system_control(bus: &'k KeyboardUsbBusAllocator) -> Self {
+        let hid_class = HIDClass::new_with_settings(
+            bus,
+            SystemControlReport::desc(),
+            POLL_MS,
+            system_control::system_control_hid_class_settings(),
+        );
+
+        Self::new_with_hid_class(hid_class)
+    }
+
+    /// Creates a new [Keyboard] device with the provided HIDClass.
+    pub fn new_with_hid_class(hid_class: HIDClass<'k, KeyboardUsbBus>) -> Self {
         Self {
-            usb_bus: UsbBus::new(usb),
+            hid_class,
             report: KeyboardReport::default(),
             last_report: KeyboardReport::default(),
             observer: HIDReportObserver::default(),
@@ -159,14 +205,20 @@ impl Keyboard {
         }
     }
 
-    /// Creates a new [Keyboard] device, taking ownership of the `USB_DEVICE` register of the
-    /// ATmega32u4.
+    /// Creates a new [Keyboard] device.
     ///
     /// Allows setting a custom [HIDReportObserver] implementation for firing a callback function
     /// on HID report events.
-    pub fn new_with_observer(usb: USB_DEVICE, observer: HIDReportObserver) -> Self {
+    pub fn new_with_observer(bus: &'k KeyboardUsbBusAllocator, observer: HIDReportObserver) -> Self {
+        let hid_class = HIDClass::new_with_settings(
+            bus,
+            KeyboardReport::desc(),
+            POLL_MS,
+            boot::boot_hid_class_settings(HidProtocol::Keyboard),
+        );
+
         Self {
-            usb_bus: UsbBus::new(usb),
+            hid_class,
             report: KeyboardReport::default(),
             last_report: KeyboardReport::default(),
             observer,
@@ -174,6 +226,54 @@ impl Keyboard {
             protocol: HidProtocol::Keyboard,
             idle: 0,
         }
+    }
+
+    pub fn as_ref(&self) -> &Self {
+        self
+    }
+
+    pub fn as_mut(&mut self) -> &mut Self {
+        self
+    }
+
+    /// Initialize the HIDClass for a Boot [Keyboard].
+    pub fn init_boot(&'k mut self, bus: &'k KeyboardUsbBusAllocator) {
+        self.hid_class = HIDClass::new_with_settings(
+            bus,
+            KeyboardReport::desc(),
+            POLL_MS,
+            boot::boot_hid_class_settings(self.protocol),
+        );
+    }
+
+    /// Initialize the HIDClass for a NKRO [Keyboard].
+    pub fn init_nkro(&'k mut self, bus: &'k KeyboardUsbBusAllocator) {
+        self.hid_class = HIDClass::new_with_settings(
+            bus,
+            KeyboardReport::desc(),
+            POLL_MS,
+            nkro::nkro_hid_class_settings(),
+        );
+    }
+
+    /// Initialize the HIDClass for a media [Keyboard].
+    pub fn init_media(&mut self, bus: &'k KeyboardUsbBusAllocator) {
+        self.hid_class = HIDClass::new_with_settings(
+            bus,
+            MediaKeyboardReport::desc(),
+            POLL_MS,
+            media::media_hid_class_settings(),
+        );
+    }
+
+    /// Initialize the HIDClass for a system control [Keyboard].
+    pub fn init_system_control(&'k mut self, bus: &'k KeyboardUsbBusAllocator) {
+        self.hid_class = HIDClass::new_with_settings(
+            bus,
+            SystemControlReport::desc(),
+            POLL_MS,
+            system_control::system_control_hid_class_settings(),
+        );
     }
 
     /// Gets a reference to the current keyboard report.
@@ -201,9 +301,14 @@ impl Keyboard {
         &mut self.last_report
     }
 
-    /// Gets a reference to the USB bus allocator.
-    pub fn bus(&self) -> &KeyboardUsbBusAllocator {
-        &self.usb_bus
+    /// Gets a reference to the [HIDClass] for the USB bus.
+    pub fn hid_class(&self) -> &HIDClass<'k, KeyboardUsbBus> {
+        &self.hid_class
+    }
+
+    /// Gets a mutable reference to the [HIDClass] for the USB bus.
+    pub fn hid_class_mut(&mut self) -> &mut HIDClass<'k, KeyboardUsbBus> {
+        &mut self.hid_class
     }
 
     /// Gets the currently set protocol for the boot keyboard.
@@ -286,28 +391,5 @@ impl Keyboard {
     /// Gets the number of LEDs in the current keyboard report.
     pub fn leds(&self) -> u8 {
         self.report.leds
-    }
-
-    /// Consumes the [KeyboardOps] implementation object, and returns the underlying USB bus.
-    pub fn to_usb_bus(self) -> KeyboardUsbBusAllocator {
-        self.usb_bus
-    }
-}
-
-impl From<KeyboardUsbBusAllocator> for Keyboard {
-    /// Creates a [Keyboard] device from a UsbBusAllocator.
-    ///
-    /// Useful for converting from other keyboard types. Ensures unique ownership over the
-    /// underlying UsbBus.
-    fn from(usb_bus: KeyboardUsbBusAllocator) -> Self {
-        Self {
-            usb_bus,
-            report: KeyboardReport::default(),
-            last_report: KeyboardReport::default(),
-            observer: HIDReportObserver::default(),
-            default_protocol: HidProtocol::Keyboard,
-            protocol: HidProtocol::Keyboard,
-            idle: 0,
-        }
     }
 }
