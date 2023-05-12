@@ -1,14 +1,13 @@
 use usb_device::Result;
-use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use usbd_hid::hid_class::{
-    HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
+    HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
 };
 
 use crate::hid_settings::{HIDReport, HIDReportId};
 
 use super::*;
 
-const fn boot_hid_class_settings(protocol: HidProtocol) -> HidClassSettings {
+pub const fn boot_hid_class_settings(protocol: HidProtocol) -> HidClassSettings {
     HidClassSettings {
         subclass: HidSubClass::Boot,
         protocol: protocol,
@@ -47,8 +46,6 @@ pub trait BootKeyboard {
     /// 3. A report with toggled-on non-modifiers added.
     fn send_report(&mut self) -> Result<()>;
 
-    fn hid_class(&'_ self) -> HIDClass<'_, KeyboardUsbBus>;
-
     /// Press a key, and add it to the current report.
     ///
     /// Returns 1 if the key is in the printable keycodes, or is a modifier key.
@@ -68,7 +65,7 @@ pub trait BootKeyboard {
     fn was_key_pressed(&self, key: u8) -> bool;
 }
 
-impl BootKeyboard for Keyboard {
+impl BootKeyboard for Keyboard<'_> {
     fn end(&mut self) -> Result<()> {
         self.release_all();
         self.send_report()
@@ -76,26 +73,17 @@ impl BootKeyboard for Keyboard {
 
     fn send_report(&mut self) -> Result<()> {
         if self.keycodes_changed() {
-            let report = self.report();
+            let report = self.report().clone();
             // replace the Ok(usize) with Ok(())
-            let ret = self.hid_class().push_input(report).map(|_| ());
+            let ret = self.hid_class_mut().push_input(&report).map(|_| ());
             self.observer
-                .observe_report(HIDReportId::Keyboard, HIDReport::Keyboard(*report), &ret);
+                .observe_report(HIDReportId::Keyboard, HIDReport::Keyboard(report), &ret);
             self.last_report = self.report;
 
             ret
         } else {
             Ok(())
         }
-    }
-
-    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus> {
-        HIDClass::new_with_settings(
-            self.bus(),
-            KeyboardReport::desc(),
-            POLL_MS,
-            boot_hid_class_settings(self.protocol),
-        )
     }
 
     fn press(&mut self, key: u8) -> usize {

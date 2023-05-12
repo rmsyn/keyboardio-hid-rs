@@ -1,12 +1,11 @@
 use usb_device::Result;
-use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use usbd_hid::hid_class::{
-    HIDClass, HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
+    HidClassSettings, HidProtocol, HidSubClass, ProtocolModeConfig,
 };
 
 use super::*;
 
-const fn nkro_hid_class_settings() -> HidClassSettings {
+pub const fn nkro_hid_class_settings() -> HidClassSettings {
     HidClassSettings {
         subclass: HidSubClass::NoSubClass,
         protocol: HidProtocol::Keyboard,
@@ -58,9 +57,7 @@ pub trait NKROKeyboard {
     fn send_report(&mut self) -> Result<()>;
 
     /// Sends a keyboard report without check report validity.
-    fn send_report_unchecked(&self) -> Result<usize>;
-
-    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus>;
+    fn send_report_unchecked(&mut self) -> Result<usize>;
 
     /// Gets whether the provided key is pressed in the current keyboard report.
     fn is_key_pressed(&self, key: u8) -> bool;
@@ -69,7 +66,7 @@ pub trait NKROKeyboard {
     fn was_key_pressed(&self, key: u8) -> bool;
 }
 
-impl NKROKeyboard for Keyboard {
+impl NKROKeyboard for Keyboard<'_> {
     fn end(&mut self) -> Result<()> {
         self.release_all();
         self.send_report_unchecked()?;
@@ -148,17 +145,9 @@ impl NKROKeyboard for Keyboard {
         Ok(())
     }
 
-    fn send_report_unchecked(&self) -> Result<usize> {
-        self.hid_class().push_input(&self.last_report)
-    }
-
-    fn hid_class(&self) -> HIDClass<'_, KeyboardUsbBus> {
-        HIDClass::new_with_settings(
-            self.bus(),
-            KeyboardReport::desc(),
-            POLL_MS,
-            nkro_hid_class_settings(),
-        )
+    fn send_report_unchecked(&mut self) -> Result<usize> {
+        let report = self.last_report.clone();
+        self.hid_class_mut().push_input(&report)
     }
 
     fn is_key_pressed(&self, key: u8) -> bool {
